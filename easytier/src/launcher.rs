@@ -648,13 +648,9 @@ impl NetworkConfig {
                             .with_context(|| format!("mapped listener is not a valid url: {}", s))
                             .unwrap()
                     })
-                    .map(|mut s: url::Url| {
+                    .map(|s: url::Url| {
                         if s.port().is_none() {
-                            match s.scheme() {
-                                "ws" => s.set_port(Some(80)).unwrap(),
-                                "wss" => s.set_port(Some(443)).unwrap(),
-                                _ => panic!("mapped listener port is missing: {}", s),
-                            }
+                            panic!("mapped listener port is missing: {}", s);
                         }
                         s
                     })

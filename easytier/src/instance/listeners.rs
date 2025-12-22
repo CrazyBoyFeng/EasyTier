@@ -26,28 +26,6 @@ use crate::{
     },
 };
 
-// 获取协议对应的默认端口
-fn get_default_port(scheme: &str) -> u16 {
-    match scheme {
-        "ws" => 80,
-        "wss" => 443,
-        _ => 0,
-    }
-}
-
-// 处理WebSocket监听器URL中的端口，将端口0替换为正确的默认端口
-fn process_listener_port(url: &url::Url) -> url::Url {
-    let mut result = url.clone();
-    // 只处理WebSocket协议的端口0
-    if (url.scheme() == "ws" || url.scheme() == "wss") && url.port().unwrap_or(0) == 0 {
-        let default_port = get_default_port(url.scheme());
-        if default_port != 0 {
-            result.set_port(Some(default_port)).unwrap();
-        }
-    }
-    result
-}
-
 pub fn get_listener_by_url(
     l: &url::Url,
     _ctx: ArcGlobalCtx,
@@ -69,9 +47,7 @@ pub fn get_listener_by_url(
         #[cfg(feature = "websocket")]
         "ws" | "wss" => {
             use crate::tunnel::websocket::WSTunnelListener;
-            // 处理WebSocket监听器URL中的端口，将端口0替换为正确的默认端口
-            let processed_url = process_listener_port(l);
-            Box::new(WSTunnelListener::new(processed_url))
+            Box::new(WSTunnelListener::new(l.clone()))
         }
         _ => {
             return Err(Error::InvalidUrl(l.to_string()));

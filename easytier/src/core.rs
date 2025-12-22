@@ -662,14 +662,12 @@ impl Cli {
         if origin_listeners.len() == 1 {
             if let Ok(port) = origin_listeners[0].parse::<u16>() {
                 for (proto, offset) in PROTO_PORT_OFFSET {
-                    let port_with_offset = port + *offset;
-                    // 如果是WebSocket协议且偏移后的端口是80或443，则转换为0
-                    let final_port = if (*proto == "ws" && port_with_offset == 80) || (*proto == "wss" && port_with_offset == 443) {
-                        0
+                    let url_str = format!("{}://0.0.0.0:{}", proto, port + *offset);
+                    if let Ok(url) = crate::utils::process_url_port(&url_str) {
+                        listeners.push(url.to_string());
                     } else {
-                        port_with_offset
-                    };
-                    listeners.push(format!("{}://0.0.0.0:{}", proto, final_port));
+                        return Err(anyhow::anyhow!("failed to parse url: {}", url_str));
+                    }
                 }
                 return Ok(listeners);
             }
@@ -678,10 +676,10 @@ impl Cli {
         for l in &origin_listeners {
             let proto_port: Vec<&str> = l.split(':').collect();
             if proto_port.len() > 2 {
-                if let Ok(url) = l.parse::<url::Url>() {
+                if let Ok(url) = crate::utils::process_url_port(l) {
                     listeners.push(url.to_string());
                 } else {
-                    panic!("failed to parse listener: {}", l);
+                    return Err(anyhow::anyhow!("failed to parse listener: {}", l));
                 }
             } else {
                 let Some((proto, offset)) = PROTO_PORT_OFFSET
@@ -692,19 +690,17 @@ impl Cli {
                 };
 
                 let port = if proto_port.len() == 2 {
-                    proto_port[1].parse::<u16>().unwrap()
+                    proto_port[1].parse::<u16>()?
                 } else {
                     11010 + offset
                 };
 
-                // 如果是WebSocket协议且端口是80或443，则转换为0
-                let final_port = if (*proto == "ws" && port == 80) || (*proto == "wss" && port == 443) {
-                    0
+                let url_str = format!("{}://0.0.0.0:{}", proto, port);
+                if let Ok(url) = crate::utils::process_url_port(&url_str) {
+                    listeners.push(url.to_string());
                 } else {
-                    port
-                };
-
-                listeners.push(format!("{}://0.0.0.0:{}", proto, final_port));
+                    return Err(anyhow::anyhow!("failed to parse url: {}", url_str));
+                }
             }
         }
 
