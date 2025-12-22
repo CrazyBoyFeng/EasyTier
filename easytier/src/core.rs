@@ -662,7 +662,14 @@ impl Cli {
         if origin_listeners.len() == 1 {
             if let Ok(port) = origin_listeners[0].parse::<u16>() {
                 for (proto, offset) in PROTO_PORT_OFFSET {
-                    listeners.push(format!("{}://0.0.0.0:{}", proto, port + *offset));
+                    let port_with_offset = port + *offset;
+                    // 如果是WebSocket协议且偏移后的端口是80或443，则转换为0
+                    let final_port = if (*proto == "ws" && port_with_offset == 80) || (*proto == "wss" && port_with_offset == 443) {
+                        0
+                    } else {
+                        port_with_offset
+                    };
+                    listeners.push(format!("{}://0.0.0.0:{}", proto, final_port));
                 }
                 return Ok(listeners);
             }
@@ -690,7 +697,14 @@ impl Cli {
                     11010 + offset
                 };
 
-                listeners.push(format!("{}://0.0.0.0:{}", proto, port));
+                // 如果是WebSocket协议且端口是80或443，则转换为0
+                let final_port = if (*proto == "ws" && port == 80) || (*proto == "wss" && port == 443) {
+                    0
+                } else {
+                    port
+                };
+
+                listeners.push(format!("{}://0.0.0.0:{}", proto, final_port));
             }
         }
 
