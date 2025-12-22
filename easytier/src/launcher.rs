@@ -28,8 +28,6 @@ pub type MyNodeInfo = crate::proto::api::manage::MyNodeInfo;
 
 type ArcMutApiService = Arc<RwLock<Option<Arc<dyn InstanceRpcService>>>>;
 
-
-
 #[derive(serde::Serialize, Clone)]
 pub struct Event {
     time: DateTime<Local>,
