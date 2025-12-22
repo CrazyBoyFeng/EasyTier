@@ -22,7 +22,7 @@ use crate::{
     proto::common::CompressionAlgoPb,
     rpc_service::ApiRpcServer,
     tunnel::PROTO_PORT_OFFSET,
-    utils::{init_logger, setup_panic_handler},
+    utils::{init_logger, process_url_port, setup_panic_handler},
     web_client,
 };
 use anyhow::Context;
@@ -748,11 +748,9 @@ impl NetworkOptions {
             let mut peers = cfg.get_peers();
             peers.reserve(peers.len() + self.peers.len());
             for p in &self.peers {
-                peers.push(PeerConfig {
-                    uri: p
-                        .parse()
-                        .with_context(|| format!("failed to parse peer uri: {}", p))?,
-                });
+                let uri = process_url_port(p)
+                    .with_context(|| format!("failed to parse peer uri: {}", p))?;
+                peers.push(PeerConfig { uri });
             }
             cfg.set_peers(peers);
         }
@@ -808,11 +806,10 @@ impl NetworkOptions {
 
         if let Some(external_nodes) = self.external_node.as_ref() {
             let mut old_peers = cfg.get_peers();
-            old_peers.push(PeerConfig {
-                uri: external_nodes.parse().with_context(|| {
-                    format!("failed to parse external node uri: {}", external_nodes)
-                })?,
-            });
+            let uri = process_url_port(external_nodes).with_context(|| {
+                format!("failed to parse external node uri: {}", external_nodes)
+            })?;
+            old_peers.push(PeerConfig { uri });
             cfg.set_peers(old_peers);
         }
 

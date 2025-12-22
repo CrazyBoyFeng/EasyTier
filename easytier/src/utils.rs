@@ -1,6 +1,7 @@
 use std::{fs::OpenOptions, str::FromStr};
 
 use anyhow::Context;
+use url::Url;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{
     layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer, Registry,
@@ -257,6 +258,49 @@ pub fn find_free_tcp_port(mut range: std::ops::Range<u16>) -> Option<u16> {
 pub fn weak_upgrade<T>(weak: &std::sync::Weak<T>) -> anyhow::Result<std::sync::Arc<T>> {
     weak.upgrade()
         .ok_or_else(|| anyhow::anyhow!("{} not available", std::any::type_name::<T>()))
+}
+
+/// 处理URL中的端口，防止端口80被修剪
+/// 如果协议是ws且端口号是80，或者协议是wss且端口号是443，就把端口改成0
+pub fn process_url_port(url_str: &str) -> Result<Url, anyhow::Error> {
+    
+    // 先检查原始字符串中是否包含显式指定的端口
+    // 必须在解析URL之前检查，因为解析后默认端口会被修剪
+    let mut should_set_port_zero = false;
+    
+    // 检查ws协议的80端口
+    if let Some(host_and_path) = url_str.strip_prefix("ws://") {
+        if let Some(port_part) = host_and_path.split('/').next() {
+            if port_part.ends_with(":80") {
+                should_set_port_zero = true;
+                println!("DEBUG: Found ws:80, will set port to 0");
+            }
+        }
+    }
+    
+    // 检查wss协议的443端口
+    if let Some(host_and_path) = url_str.strip_prefix("wss://") {
+        if let Some(port_part) = host_and_path.split('/').next() {
+            if port_part.ends_with(":443") {
+                should_set_port_zero = true;
+                println!("DEBUG: Found wss:443, will set port to 0");
+            }
+        }
+    }
+    
+    // 现在解析URL
+    let mut url = url_str.parse::<Url>()
+        .with_context(|| format!("failed to parse url: {}", url_str))?;
+    
+    // 如果需要，将端口设置为0
+    if should_set_port_zero {
+        url.set_port(Some(0)).unwrap();
+        println!("DEBUG: Port set to 0, URL now: {}", url);
+    } else {
+        println!("DEBUG: Port not modified, URL: {}", url);
+    }
+    
+    Ok(url)
 }
 
 #[cfg(test)]

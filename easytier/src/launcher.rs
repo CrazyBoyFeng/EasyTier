@@ -11,6 +11,7 @@ use crate::{
         constants::EASYTIER_VERSION,
         global_ctx::{EventBusSubscriber, GlobalCtxEvent},
     },
+    utils::process_url_port,
     instance::instance::Instance,
     proto::api::instance::list_peer_route_pair,
 };
@@ -26,6 +27,8 @@ use tokio::{sync::broadcast, task::JoinSet};
 pub type MyNodeInfo = crate::proto::api::manage::MyNodeInfo;
 
 type ArcMutApiService = Arc<RwLock<Option<Arc<dyn InstanceRpcService>>>>;
+
+
 
 #[derive(serde::Serialize, Clone)]
 pub struct Event {
@@ -518,11 +521,11 @@ impl NetworkConfig {
         {
             NetworkingMethod::PublicServer => {
                 let public_server_url = self.public_server_url.clone().unwrap_or_default();
-                cfg.set_peers(vec![PeerConfig {
-                    uri: public_server_url.parse().with_context(|| {
+                let uri = process_url_port(&public_server_url)
+                    .with_context(|| {
                         format!("failed to parse public server uri: {}", public_server_url)
-                    })?,
-                }]);
+                    })?;
+                cfg.set_peers(vec![PeerConfig { uri }]);
             }
             NetworkingMethod::Manual => {
                 let mut peers = vec![];
@@ -530,11 +533,9 @@ impl NetworkConfig {
                     if peer_url.is_empty() {
                         continue;
                     }
-                    peers.push(PeerConfig {
-                        uri: peer_url
-                            .parse()
-                            .with_context(|| format!("failed to parse peer uri: {}", peer_url))?,
-                    });
+                    let uri = process_url_port(peer_url)
+                        .with_context(|| format!("failed to parse peer uri: {}", peer_url))?;
+                    peers.push(PeerConfig { uri });
                 }
 
                 cfg.set_peers(peers);
@@ -547,11 +548,9 @@ impl NetworkConfig {
             if listener_url.is_empty() {
                 continue;
             }
-            listener_urls.push(
-                listener_url
-                    .parse()
-                    .with_context(|| format!("failed to parse listener uri: {}", listener_url))?,
-            );
+            let uri = process_url_port(listener_url)
+                .with_context(|| format!("failed to parse listener uri: {}", listener_url))?;
+            listener_urls.push(uri);
         }
         cfg.set_listeners(listener_urls);
 
@@ -649,9 +648,13 @@ impl NetworkConfig {
                             .with_context(|| format!("mapped listener is not a valid url: {}", s))
                             .unwrap()
                     })
-                    .map(|s: url::Url| {
+                    .map(|mut s: url::Url| {
                         if s.port().is_none() {
-                            panic!("mapped listener port is missing: {}", s);
+                            match s.scheme() {
+                                "ws" => s.set_port(Some(80)).unwrap(),
+                                "wss" => s.set_port(Some(443)).unwrap(),
+                                _ => panic!("mapped listener port is missing: {}", s),
+                            }
                         }
                         s
                     })
