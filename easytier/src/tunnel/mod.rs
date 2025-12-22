@@ -208,7 +208,17 @@ fn default_port(scheme: &str) -> Option<u16> {
 
 #[async_trait::async_trait]
 impl FromUrl for SocketAddr {
-    async fn from_url(url: url::Url, ip_version: IpVersion) -> Result<Self, TunnelError> {
+    async fn from_url(mut url: url::Url, ip_version: IpVersion) -> Result<Self, TunnelError> {
+        // 处理端口为0的情况，这是为了支持ws:80和wss:443
+        if url.port().unwrap_or(0) == 0 {
+            let port = match url.scheme() {
+                "ws" => 80,
+                "wss" => 443,
+                _ => default_port(url.scheme()).unwrap_or(0),
+            };
+            url.set_port(Some(port)).unwrap();
+        }
+        
         let addrs = socket_addrs(&url, || default_port(url.scheme()))
             .await
             .map_err(|e| {
