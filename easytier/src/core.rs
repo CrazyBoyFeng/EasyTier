@@ -780,7 +780,7 @@ impl NetworkOptions {
                 self.mapped_listeners
                     .iter()
                     .map(|s| {
-                        s.parse()
+                        crate::utils::process_url_port(s)
                             .with_context(|| format!("mapped listener is not a valid url: {}", s))
                             .unwrap()
                     })
