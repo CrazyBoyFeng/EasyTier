@@ -230,7 +230,19 @@ impl FromUrl for SocketAddr {
             println!("[DEBUG] FromUrl: URL {} port changed from {:?} to {:?}", processed_url, original_port, final_port);
         }
         
-        let addrs = socket_addrs(&processed_url, || default_port(processed_url.scheme()))
+        let addrs = socket_addrs(&processed_url, || {
+            match original_port {
+                Some(0) => {
+                    match processed_url.scheme() {
+                        "ws" => Some(80),
+                        "wss" => Some(443),
+                        _ => default_port(processed_url.scheme())
+                    }
+                },
+                None => default_port(processed_url.scheme()),
+                Some(port) => Some(port)
+            }
+        })
             .await
             .map_err(|e| {
                 TunnelError::InvalidAddr(format!(
