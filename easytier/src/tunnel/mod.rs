@@ -211,12 +211,23 @@ impl FromUrl for SocketAddr {
     async fn from_url(url: url::Url, ip_version: IpVersion) -> Result<Self, TunnelError> {
         // 只处理ws和wss协议的端口0情况
         let mut processed_url = url;
+        let original_port = processed_url.port();
         if processed_url.port().unwrap_or(0) == 0 {
             match processed_url.scheme() {
-                "ws" => processed_url.set_port(Some(80)).unwrap(),
-                "wss" => processed_url.set_port(Some(443)).unwrap(),
+                "ws" => {
+                    processed_url.set_port(Some(80)).unwrap();
+                    println!("[DEBUG] FromUrl: ws port 0 -> 80");
+                },
+                "wss" => {
+                    processed_url.set_port(Some(443)).unwrap();
+                    println!("[DEBUG] FromUrl: wss port 0 -> 443");
+                },
                 _ => {} // 其他协议不做处理
             }
+        }
+        let final_port = processed_url.port();
+        if original_port != final_port {
+            println!("[DEBUG] FromUrl: URL {} port changed from {:?} to {:?}", processed_url, original_port, final_port);
         }
         
         let addrs = socket_addrs(&processed_url, || default_port(processed_url.scheme()))
