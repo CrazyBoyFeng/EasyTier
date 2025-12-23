@@ -657,54 +657,47 @@ impl Cli {
             return Ok(vec![]);
         }
 
-        let origin_listeners = listeners;
-        let mut listeners: Vec<String> = Vec::new();
-        if origin_listeners.len() == 1 {
-            if let Ok(port) = origin_listeners[0].parse::<u16>() {
+        if listeners.len() == 1 {
+            if let Ok(port) = listeners[0].parse::<u16>() {
+                let mut result = Vec::new();
                 for (proto, offset) in PROTO_PORT_OFFSET {
                     let url_str = format!("{}://0.0.0.0:{}", proto, port + *offset);
-                    if let Ok(url) = crate::utils::process_url_port(&url_str) {
-                        listeners.push(url.to_string());
-                    } else {
-                        return Err(anyhow::anyhow!("failed to parse url: {}", url_str));
-                    }
+                    let url = crate::utils::process_url_port(&url_str)
+                        .with_context(|| format!("failed to parse listener uri: {}", url_str))?;
+                    result.push(url.to_string());
                 }
-                return Ok(listeners);
+                return Ok(result);
             }
         }
 
-        for l in &origin_listeners {
-            let proto_port: Vec<&str> = l.split(':').collect();
-            if proto_port.len() > 2 {
-                if let Ok(url) = crate::utils::process_url_port(l) {
-                    listeners.push(url.to_string());
-                } else {
-                    return Err(anyhow::anyhow!("failed to parse listener: {}", l));
-                }
+        let mut result = Vec::new();
+        for l in &listeners {
+            if l.contains(":") && l.split(":").count() > 2 {
+                let url = crate::utils::process_url_port(l)
+                    .with_context(|| format!("failed to parse listener uri: {}", l))?;
+                result.push(url.to_string());
             } else {
-                let Some((proto, offset)) = PROTO_PORT_OFFSET
+                let parts: Vec<&str> = l.split(":").collect();
+                let proto = parts[0];
+                let (_, offset) = PROTO_PORT_OFFSET
                     .iter()
-                    .find(|(proto, _)| *proto == proto_port[0])
-                else {
-                    return Err(anyhow::anyhow!("unknown protocol: {}", proto_port[0]));
-                };
-
-                let port = if proto_port.len() == 2 {
-                    proto_port[1].parse::<u16>()?
+                    .find(|(p, _)| *p == proto)
+                    .ok_or_else(|| anyhow::anyhow!("unknown protocol: {}", proto))?;
+                
+                let port = if parts.len() == 2 {
+                    parts[1].parse::<u16>()?
                 } else {
                     11010 + offset
                 };
-
+                
                 let url_str = format!("{}://0.0.0.0:{}", proto, port);
-                if let Ok(url) = crate::utils::process_url_port(&url_str) {
-                    listeners.push(url.to_string());
-                } else {
-                    return Err(anyhow::anyhow!("failed to parse url: {}", url_str));
-                }
+                let url = crate::utils::process_url_port(&url_str)
+                    .with_context(|| format!("failed to parse listener uri: {}", url_str))?;
+                result.push(url.to_string());
             }
         }
-
-        Ok(listeners)
+        
+        Ok(result)
     }
 }
 
