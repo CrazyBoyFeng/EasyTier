@@ -208,23 +208,23 @@ fn default_port(scheme: &str) -> Option<u16> {
 
 #[async_trait::async_trait]
 impl FromUrl for SocketAddr {
-    async fn from_url(mut url: url::Url, ip_version: IpVersion) -> Result<Self, TunnelError> {
-        // 处理端口为0的情况，这是为了支持ws:80和wss:443
-        if url.port().unwrap_or(0) == 0 {
-            let port = match url.scheme() {
-                "ws" => 80,
-                "wss" => 443,
-                _ => default_port(url.scheme()).unwrap_or(0),
-            };
-            url.set_port(Some(port)).unwrap();
+    async fn from_url(url: url::Url, ip_version: IpVersion) -> Result<Self, TunnelError> {
+        // 只处理ws和wss协议的端口0情况
+        let mut processed_url = url;
+        if processed_url.port().unwrap_or(0) == 0 {
+            match processed_url.scheme() {
+                "ws" => processed_url.set_port(Some(80)).unwrap(),
+                "wss" => processed_url.set_port(Some(443)).unwrap(),
+                _ => {} // 其他协议不做处理
+            }
         }
         
-        let addrs = socket_addrs(&url, || default_port(url.scheme()))
+        let addrs = socket_addrs(&processed_url, || default_port(processed_url.scheme()))
             .await
             .map_err(|e| {
                 TunnelError::InvalidAddr(format!(
                     "failed to resolve socket addr, url: {}, error: {}",
-                    url, e
+                    processed_url, e
                 ))
             })?;
         tracing::debug!(?addrs, ?ip_version, ?url, "convert url to socket addrs");
