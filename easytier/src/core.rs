@@ -683,20 +683,20 @@ impl Cli {
                     .iter()
                     .find(|(p, _)| *p == proto)
                     .ok_or_else(|| anyhow::anyhow!("unknown protocol: {}", proto))?;
-                
+
                 let port = if parts.len() == 2 {
                     parts[1].parse::<u16>()?
                 } else {
                     11010 + offset
                 };
-                
+
                 let url_str = format!("{}://0.0.0.0:{}", proto, port);
                 let url = crate::utils::process_url_port(&url_str)
                     .with_context(|| format!("failed to parse listener uri: {}", url_str))?;
                 result.push(url.to_string());
             }
         }
-        
+
         Ok(result)
     }
 }
