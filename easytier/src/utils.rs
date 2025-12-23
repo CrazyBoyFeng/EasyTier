@@ -1,11 +1,11 @@
 use std::{fs::OpenOptions, str::FromStr};
 
 use anyhow::Context;
-use url::Url;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{
     layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer, Registry,
 };
+use url::Url;
 
 use crate::common::{
     config::LoggingConfigLoader, get_logger_timer_rfc3339, tracing_rolling_appender::*,
@@ -266,7 +266,7 @@ pub fn process_url_port(url_str: &str) -> Result<Url, anyhow::Error> {
     // 先检查原始字符串中是否包含显式指定的端口
     // 必须在解析URL之前检查，因为解析后默认端口会被修剪
     let mut should_set_port_zero = false;
-    
+
     // 检查ws协议的80端口
     if let Some(host_and_path) = url_str.strip_prefix("ws://") {
         if let Some(port_part) = host_and_path.split('/').next() {
@@ -275,7 +275,7 @@ pub fn process_url_port(url_str: &str) -> Result<Url, anyhow::Error> {
             }
         }
     }
-    
+
     // 检查wss协议的443端口
     if let Some(host_and_path) = url_str.strip_prefix("wss://") {
         if let Some(port_part) = host_and_path.split('/').next() {
@@ -284,16 +284,17 @@ pub fn process_url_port(url_str: &str) -> Result<Url, anyhow::Error> {
             }
         }
     }
-    
+
     // 现在解析URL
-    let mut url = url_str.parse::<Url>()
+    let mut url = url_str
+        .parse::<Url>()
         .with_context(|| format!("failed to parse url: {}", url_str))?;
-    
+
     // 如果需要，将端口设置为0
     if should_set_port_zero {
         url.set_port(Some(0)).unwrap();
     }
-    
+
     Ok(url)
 }
 

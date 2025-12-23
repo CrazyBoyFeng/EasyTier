@@ -11,9 +11,9 @@ use crate::{
         constants::EASYTIER_VERSION,
         global_ctx::{EventBusSubscriber, GlobalCtxEvent},
     },
-    utils::process_url_port,
     instance::instance::Instance,
     proto::api::instance::list_peer_route_pair,
+    utils::process_url_port,
 };
 use anyhow::Context;
 use chrono::{DateTime, Local};
@@ -519,10 +519,9 @@ impl NetworkConfig {
         {
             NetworkingMethod::PublicServer => {
                 let public_server_url = self.public_server_url.clone().unwrap_or_default();
-                let uri = process_url_port(&public_server_url)
-                    .with_context(|| {
-                        format!("failed to parse public server uri: {}", public_server_url)
-                    })?;
+                let uri = process_url_port(&public_server_url).with_context(|| {
+                    format!("failed to parse public server uri: {}", public_server_url)
+                })?;
                 cfg.set_peers(vec![PeerConfig { uri }]);
             }
             NetworkingMethod::Manual => {
