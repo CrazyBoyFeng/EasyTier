@@ -642,16 +642,11 @@ impl NetworkConfig {
                 self.mapped_listeners
                     .iter()
                     .map(|s| {
-                        s.parse()
+                        crate::utils::process_url_port(s)
                             .with_context(|| format!("mapped listener is not a valid url: {}", s))
                             .unwrap()
                     })
-                    .map(|s: url::Url| {
-                        if s.port().is_none() {
-                            panic!("mapped listener port is missing: {}", s);
-                        }
-                        s
-                    })
+                    .map(|s| s.to_string())
                     .collect(),
             ));
         }
