@@ -227,7 +227,7 @@ impl FromUrl for SocketAddr {
                     processed_url, e
                 ))
             })?;
-        tracing::debug!(?addrs, ?ip_version, ?url, "convert url to socket addrs");
+        tracing::debug!(?addrs, ?ip_version, ?processed_url, "convert url to socket addrs");
         let addrs = addrs
             .into_iter()
             .filter(|addr| match ip_version {
