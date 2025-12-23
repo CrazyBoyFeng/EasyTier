@@ -646,7 +646,6 @@ impl NetworkConfig {
                             .with_context(|| format!("mapped listener is not a valid url: {}", s))
                             .unwrap()
                     })
-                    .map(|s| s.to_string())
                     .collect(),
             ));
         }
