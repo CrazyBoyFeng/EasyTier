@@ -209,48 +209,15 @@ fn default_port(scheme: &str) -> Option<u16> {
 #[async_trait::async_trait]
 impl FromUrl for SocketAddr {
     async fn from_url(url: url::Url, ip_version: IpVersion) -> Result<Self, TunnelError> {
-        // 只处理ws和wss协议的端口0情况
-        let mut processed_url = url;
-        let original_port = processed_url.port();
-        if processed_url.port().unwrap_or(0) == 0 {
-            match processed_url.scheme() {
-                "ws" => {
-                    processed_url.set_port(Some(80)).unwrap();
-                    println!("[DEBUG] FromUrl: ws port 0 -> 80");
-                },
-                "wss" => {
-                    processed_url.set_port(Some(443)).unwrap();
-                    println!("[DEBUG] FromUrl: wss port 0 -> 443");
-                },
-                _ => {} // 其他协议不做处理
-            }
-        }
-        let final_port = processed_url.port();
-        if original_port != final_port {
-            println!("[DEBUG] FromUrl: URL {} port changed from {:?} to {:?}", processed_url, original_port, final_port);
-        }
-        
-        let addrs = socket_addrs(&processed_url, || {
-            match original_port {
-                Some(0) => {
-                    match processed_url.scheme() {
-                        "ws" => Some(80),
-                        "wss" => Some(443),
-                        _ => default_port(processed_url.scheme())
-                    }
-                },
-                None => default_port(processed_url.scheme()),
-                Some(port) => Some(port)
-            }
-        })
+        let addrs = socket_addrs(&url, || default_port(url.scheme()))
             .await
             .map_err(|e| {
                 TunnelError::InvalidAddr(format!(
                     "failed to resolve socket addr, url: {}, error: {}",
-                    processed_url, e
+                    url, e
                 ))
             })?;
-        tracing::debug!(?addrs, ?ip_version, ?processed_url, "convert url to socket addrs");
+        tracing::debug!(?addrs, ?ip_version, ?url, "convert url to socket addrs");
         let addrs = addrs
             .into_iter()
             .filter(|addr| match ip_version {
