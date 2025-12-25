@@ -301,4 +301,72 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
         tracing::debug!("test display debug");
     }
+
+    // 辅助函数：测试URL端口处理
+    fn test_url_port_helper(
+        url_str: &str,
+        expected_scheme: &str,
+        expected_host: Option<&str>,
+        expected_port: Option<u16>,
+        expected_path: Option<&str>,
+    ) -> anyhow::Result<()> {
+        let url = process_url_port(url_str)?;
+        assert_eq!(url.scheme(), expected_scheme, "Scheme mismatch for {}", url_str);
+        assert_eq!(url.host_str(), expected_host, "Host mismatch for {}", url_str);
+        assert_eq!(url.port(), expected_port, "Port mismatch for {}", url_str);
+        if let Some(expected_path) = expected_path {
+            assert_eq!(url.path(), expected_path, "Path mismatch for {}", url_str);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_process_url_port() -> anyhow::Result<()> {
+        // 测试ws协议端口80转为0
+        test_url_port_helper("ws://example.com:80", "ws", Some("example.com"), Some(0), None)?;
+        // 测试ws协议端口80带末尾斜杠转为0
+        test_url_port_helper("ws://example.com:80/", "ws", Some("example.com"), Some(0), Some("/"))?;
+        // 测试wss协议端口443转为0
+        test_url_port_helper("wss://example.com:443", "wss", Some("example.com"), Some(0), None)?;
+        // 测试wss协议端口443带末尾斜杠转为0
+        test_url_port_helper("wss://example.com:443/", "wss", Some("example.com"), Some(0), Some("/"))?;
+        // 测试ws协议端口80带路径转为0
+        test_url_port_helper("ws://example.com:80/path", "ws", Some("example.com"), Some(0), Some("/path"))?;
+        // 测试wss协议端口443带路径转为0
+        test_url_port_helper("wss://example.com:443/path", "wss", Some("example.com"), Some(0), Some("/path"))?;
+        // 测试ws协议非标准端口保持不变
+        test_url_port_helper("ws://example.com:8080", "ws", Some("example.com"), Some(8080), None)?;
+        // 测试wss协议非标准端口保持不变
+        test_url_port_helper("wss://example.com:8443", "wss", Some("example.com"), Some(8443), None)?;
+        // 测试tcp协议端口80保持不变
+        test_url_port_helper("tcp://example.com:80", "tcp", Some("example.com"), Some(80), None)?;
+        // 测试udp协议端口80保持不变
+        test_url_port_helper("udp://example.com:80", "udp", Some("example.com"), Some(80), None)?;
+        // 测试ws协议无端口保持不变
+        test_url_port_helper("ws://example.com", "ws", Some("example.com"), None, None)?;
+        // 测试wss协议无端口保持不变
+        test_url_port_helper("wss://example.com", "wss", Some("example.com"), None, None)?;
+        // 测试ws协议端口80带双斜杠路径转为0
+        test_url_port_helper("ws://example.com:80//double-slash/path", "ws", Some("example.com"), Some(0), Some("//double-slash/path"))?;
+        // 测试ws协议IPv6地址包含80但无端口保持不变
+        test_url_port_helper("ws://[2001:80::80]", "ws", Some("[2001:80::80]"), None, None)?;
+        // 测试wss协议IPv6地址包含443但无端口保持不变
+        test_url_port_helper("wss://[2001:443::443]", "wss", Some("[2001:443::443]"), None, None)?;
+        // 测试ws协议路径80结尾保持不变
+        test_url_port_helper("ws://example.com/test:80", "ws", Some("example.com"), None, Some("/test:80"))?;
+        // 测试ws协议路径80斜杠结尾保持不变
+        test_url_port_helper("ws://example.com/test:80/", "ws", Some("example.com"), None, Some("/test:80/"))?;
+        // 测试wss协议路径443结尾保持不变
+        test_url_port_helper("wss://example.com/test:443", "wss", Some("example.com"), None, Some("/test:443"))?;
+        // 测试wss协议路径443斜杠结尾保持不变
+        test_url_port_helper("wss://example.com/test:443/", "wss", Some("example.com"), None, Some("/test:443/"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_process_url_port_invalid_url() {
+        let url_str = "invalid-url";
+        let result = process_url_port(url_str);
+        assert!(result.is_err(), "Invalid URL should return error");
+    }
 }
