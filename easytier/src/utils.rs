@@ -311,8 +311,18 @@ mod tests {
         expected_path: Option<&str>,
     ) -> anyhow::Result<()> {
         let url = process_url_port(url_str)?;
-        assert_eq!(url.scheme(), expected_scheme, "Scheme mismatch for {}", url_str);
-        assert_eq!(url.host_str(), expected_host, "Host mismatch for {}", url_str);
+        assert_eq!(
+            url.scheme(),
+            expected_scheme,
+            "Scheme mismatch for {}",
+            url_str
+        );
+        assert_eq!(
+            url.host_str(),
+            expected_host,
+            "Host mismatch for {}",
+            url_str
+        );
         assert_eq!(url.port(), expected_port, "Port mismatch for {}", url_str);
         if let Some(expected_path) = expected_path {
             assert_eq!(url.path(), expected_path, "Path mismatch for {}", url_str);
@@ -323,35 +333,137 @@ mod tests {
     #[test]
     fn test_process_url_port() -> anyhow::Result<()> {
         // 核心功能测试
-        test_url_port_helper("ws://example.com:80", "ws", Some("example.com"), Some(0), None)?;
-        test_url_port_helper("wss://example.com:443", "wss", Some("example.com"), Some(0), None)?;
+        test_url_port_helper(
+            "ws://example.com:80",
+            "ws",
+            Some("example.com"),
+            Some(0),
+            None,
+        )?;
+        test_url_port_helper(
+            "wss://example.com:443",
+            "wss",
+            Some("example.com"),
+            Some(0),
+            None,
+        )?;
 
         // 带路径的情况
-        test_url_port_helper("ws://example.com:80/path", "ws", Some("example.com"), Some(0), Some("/path"))?;
-        test_url_port_helper("ws://example.com:80/path:80", "ws", Some("example.com"), Some(0), Some("/path:80"))?;
-        test_url_port_helper("wss://example.com:443/path:443", "wss", Some("example.com"), Some(0), Some("/path:443"))?; // 新增
-        test_url_port_helper("ws://example.com:80//double-slash/path", "ws", Some("example.com"), Some(0), Some("//double-slash/path"))?;
-        test_url_port_helper("wss://example.com:443//double-slash/path", "wss", Some("example.com"), Some(0), Some("//double-slash/path"))?; // 新增
-        test_url_port_helper("wss://example.com:443/", "wss", Some("example.com"), Some(0), Some("/"))?;
+        test_url_port_helper(
+            "ws://example.com:80/path",
+            "ws",
+            Some("example.com"),
+            Some(0),
+            Some("/path"),
+        )?;
+        test_url_port_helper(
+            "ws://example.com:80/path:80",
+            "ws",
+            Some("example.com"),
+            Some(0),
+            Some("/path:80"),
+        )?;
+        test_url_port_helper(
+            "wss://example.com:443/path:443",
+            "wss",
+            Some("example.com"),
+            Some(0),
+            Some("/path:443"),
+        )?;
+        test_url_port_helper(
+            "ws://example.com:80//double-slash/path",
+            "ws",
+            Some("example.com"),
+            Some(0),
+            Some("//double-slash/path"),
+        )?;
+        test_url_port_helper(
+            "wss://example.com:443//double-slash/path",
+            "wss",
+            Some("example.com"),
+            Some(0),
+            Some("//double-slash/path"),
+        )?;
+        test_url_port_helper(
+            "wss://example.com:443/",
+            "wss",
+            Some("example.com"),
+            Some(0),
+            Some("/"),
+        )?;
 
         // 非标准端口保持不变
-        test_url_port_helper("ws://example.com:8080/path", "ws", Some("example.com"), Some(8080), Some("/path"))?;
+        test_url_port_helper(
+            "ws://example.com:8080/path",
+            "ws",
+            Some("example.com"),
+            Some(8080),
+            Some("/path"),
+        )?;
 
         // 其他协议保持不变
-        test_url_port_helper("tcp://example.com:80/path", "tcp", Some("example.com"), Some(80), Some("/path"))?;
+        test_url_port_helper(
+            "tcp://example.com:80/path",
+            "tcp",
+            Some("example.com"),
+            Some(80),
+            Some("/path"),
+        )?;
 
         // 无端口情况保持不变
-        test_url_port_helper("ws://example.com/path", "ws", Some("example.com"), None, Some("/path"))?;
-        test_url_port_helper("wss://example.com/path", "wss", Some("example.com"), None, Some("/path"))?; // 新增
+        test_url_port_helper(
+            "ws://example.com/path",
+            "ws",
+            Some("example.com"),
+            None,
+            Some("/path"),
+        )?;
+        test_url_port_helper(
+            "wss://example.com/path",
+            "wss",
+            Some("example.com"),
+            None,
+            Some("/path"),
+        )?;
 
         // IPv6地址测试
-        test_url_port_helper("ws://[2001:80::80]", "ws", Some("[2001:80::80]"), None, None)?;
-        test_url_port_helper("ws://[2001:80::80]:80", "ws", Some("[2001:80::80]"), Some(0), None)?;
-        test_url_port_helper("wss://[2001::443]:443/path", "wss", Some("[2001::443]"), Some(0), Some("/path"))?; // 新增
-        test_url_port_helper("wss://[2001:443::443]/path", "wss", Some("[2001:443::443]"), None, Some("/path"))?; // 新增
+        test_url_port_helper(
+            "ws://[2001:80::80]",
+            "ws",
+            Some("[2001:80::80]"),
+            None,
+            None,
+        )?;
+        test_url_port_helper(
+            "ws://[2001:80::80]:80",
+            "ws",
+            Some("[2001:80::80]"),
+            Some(0),
+            None,
+        )?;
+        test_url_port_helper(
+            "wss://[2001::443]:443/path",
+            "wss",
+            Some("[2001::443]"),
+            Some(0),
+            Some("/path"),
+        )?;
+        test_url_port_helper(
+            "wss://[2001:443::443]/path",
+            "wss",
+            Some("[2001:443::443]"),
+            None,
+            Some("/path"),
+        )?;
 
         // 路径中包含80的情况
-        test_url_port_helper("ws://example.com/path:80/", "ws", Some("example.com"), None, Some("/path:80/"))?;
+        test_url_port_helper(
+            "ws://example.com/path:80/",
+            "ws",
+            Some("example.com"),
+            None,
+            Some("/path:80/"),
+        )?;
 
         Ok(())
     }
