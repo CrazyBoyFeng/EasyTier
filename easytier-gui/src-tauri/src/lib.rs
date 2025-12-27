@@ -1037,7 +1037,7 @@ pub fn run_gui() -> std::process::ExitCode {
     let app = builder
         .setup(|app| {
             // for logging config
-            let Ok(log_dir) = get_log_dir(&app.app_handle()) else {
+            let Ok(log_dir) = get_log_dir(app.app_handle()) else {
                 return Ok(());
             };
             let config = LoggingConfigBuilder::default()
