@@ -442,7 +442,7 @@ async fn get_log_dir_path(app: tauri::AppHandle) -> Result<String, String> {
         Ok(log_dir) => {
             std::fs::create_dir_all(&log_dir).ok();
             Ok(log_dir.to_string_lossy().to_string())
-        },
+        }
         Err(e) => Err(format!("Failed to get log directory: {}", e)),
     }
 }
