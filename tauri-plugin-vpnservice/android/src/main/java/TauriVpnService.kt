@@ -20,6 +20,11 @@ class TauriVpnService : VpnService() {
         const val DNS = "DNS"
         const val DISALLOWED_APPLICATIONS = "DISALLOWED_APPLICATIONS"
         const val MTU = "MTU"
+        
+
+        
+        // Store the service instance for socket protection
+        @JvmField var instance: TauriVpnService? = null
     }
 
     private lateinit var vpnInterface: ParcelFileDescriptor
@@ -41,6 +46,7 @@ class TauriVpnService : VpnService() {
     override fun onCreate() {
         super.onCreate()
         self = this
+        instance = this
         println("vpn on create")
     }
 
@@ -49,6 +55,7 @@ class TauriVpnService : VpnService() {
         super.onDestroy()
         disconnect()
         self = null
+        instance = null
     }
 
     override fun onRevoke() {
@@ -105,5 +112,69 @@ class TauriVpnService : VpnService() {
         }
         .establish()
         ?: throw IllegalStateException("Failed to init VpnService")
+    }
+    
+    /**
+     * Protect a socket from the VPN by calling VpnService.protect()
+     * This function is called from Rust via JNI
+     * Returns 0 on success, -1 on failure
+     */
+    fun protectSocket(fd: Int): Int {
+        return try {
+            val success = protect(fd)
+            if (success) {
+                println("Successfully protected socket fd: $fd")
+                0
+            } else {
+                println("Failed to protect socket fd: $fd")
+                -1
+            }
+        } catch (e: Exception) {
+            println("Exception protecting socket fd: $fd, error: $e")
+            -1
+        }
+    }
+    
+    /**
+     * Get the current service instance for socket protection
+     * This function is called from JNI
+     */
+    companion object {
+        @JvmStatic
+        fun getInstance(): TauriVpnService? {
+            return instance
+        }
+        
+        /**
+         * Static method to protect a socket using the current service instance
+         * This method is called from Rust via JNI
+         * Returns 0 on success, -1 on failure
+         */
+        @JvmStatic
+        fun protectSocketStatic(fd: Int): Int {
+            val service = instance
+            return if (service != null) {
+                service.protectSocket(fd)
+            } else {
+                println("Service instance not available for socket protection")
+                -1
+            }
+        }
+        
+        /**
+         * Initialize socket protection from native Rust code
+         * This method ensures the service instance is available
+         */
+        @JvmStatic
+        fun initProtectionFromRust(): Boolean {
+            val service = instance
+            if (service != null) {
+                println("Socket protection initialized from Rust, service available")
+                return true
+            } else {
+                println("Service not available for socket protection initialization")
+                return false
+            }
+        }
     }
 }

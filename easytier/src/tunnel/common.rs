@@ -6,6 +6,9 @@ use std::{
     task::{ready, Poll},
 };
 
+#[cfg(target_os = "android")]
+use std::sync::OnceLock;
+
 use futures::{stream::FuturesUnordered, Future, Sink, Stream};
 use network_interface::NetworkInterfaceConfig as _;
 use pin_project_lite::pin_project;
@@ -25,6 +28,84 @@ use super::{
     packet_def::{TCPTunnelHeader, ZCPacketType, TCP_TUNNEL_HEADER_SIZE},
     SinkItem, StreamItem, Tunnel, TunnelError, ZCPacketSink, ZCPacketStream,
 };
+
+#[cfg(all(target_os = "android", feature = "android-jni"))]
+use jni::{JNIEnv, objects::{JClass, JObject}, sys::{jint, jobject, JavaVM}};
+
+#[cfg(all(target_os = "android", feature = "android-jni"))]
+static mut JVM: Option<JavaVM> = None;
+
+/// Initialize JNI for Android socket protection
+#[cfg(all(target_os = "android", feature = "android-jni"))]
+pub fn init_android_jni(vm: JavaVM) {
+    unsafe {
+        JVM = Some(vm);
+    }
+    tracing::info!("Android JVM initialized for socket protection");
+}
+
+/// Protect a socket using Android VPNService
+#[cfg(all(target_os = "android", feature = "android-jni"))]
+pub fn protect_socket_android(fd: i32) -> Result<(), String> {
+    unsafe {
+        if let Some(ref jvm) = JVM {
+            // Attach current thread to JVM
+            let mut env = std::ptr::null_mut();
+            if jvm.GetEnv(&mut env as *mut _ as *mut _, jni::JNI_VERSION_1_6) != jni::JNI_OK {
+                if jvm.AttachCurrentThread(&mut env as *mut _ as *mut _, std::ptr::null_mut()) != jni::JNI_OK {
+                    return Err("Failed to attach current thread to JVM".to_string());
+                }
+            }
+            
+            if env.is_null() {
+                return Err("Failed to get JNI environment".to_string());
+            }
+            
+            let jni_env = JNIEnv::from_raw(env).map_err(|e| format!("Failed to create JNIEnv: {:?}", e))?;
+            
+            // Get TauriVpnService class
+            let service_class = jni_env.find_class("com/plugin/vpnservice/TauriVpnService")
+                .map_err(|e| format!("Failed to find TauriVpnService class: {:?}", e))?;
+            
+            // Get static protectSocket method
+            let protect_method = jni_env.get_static_method_id(
+                service_class,
+                "protectSocketStatic", 
+                "(I)I"
+            ).map_err(|e| format!("Failed to get protectSocketStatic method: {:?}", e))?;
+            
+            // Call the method
+            let result = jni_env.call_static_method_unchecked(
+                service_class,
+                protect_method,
+                jni::sys::jint::JNI_TYPE,
+                &[jni::objects::JValue::Int(fd).as_jni()],
+            ).map_err(|e| format!("Failed to call protectSocketStatic: {:?}", e))?;
+            
+            match result.i() {
+                0 => {
+                    tracing::debug!("Successfully protected socket fd: {}", fd);
+                    Ok(())
+                }
+                code => Err(format!("Failed to protect socket fd: {}, error code: {}", fd, code)),
+            }
+        } else {
+            Err("JVM not initialized".to_string())
+        }
+    }
+}
+
+/// Fallback function for when JNI is not available
+#[cfg(not(all(target_os = "android", feature = "android-jni")))]
+pub fn protect_socket_android(fd: i32) -> Result<(), String> {
+    Err("Android socket protection not available (JNI feature not enabled)".to_string())
+}
+
+/// Initialize socket protection system
+#[cfg(target_os = "android")]
+pub fn init_socket_protection() {
+    tracing::info!("Socket protection initialization called (JNI mode)");
+}
 
 pub struct TunnelWrapper<R, W> {
     reader: Arc<Mutex<Option<R>>>,
@@ -393,8 +474,31 @@ pub(crate) fn setup_sokcet2_ext(
         }
     }
 
+    #[cfg(target_os = "android")]
+    if let Some(dev_name) = bind_dev {
+        tracing::trace!(dev_name = ?dev_name, "bind device");
+        
+        // Try to use protect socket function first (preferred for Android)
+        let fd = socket2_socket.as_raw_fd();
+        match protect_socket_android(fd) {
+            Ok(()) => {
+                tracing::debug!("Successfully protected socket {} instead of binding device {}", fd, dev_name);
+                return Ok(());
+            }
+            Err(e) => {
+                tracing::warn!("Failed to protect socket {}: {}, falling back to bind_device", fd, e);
+            }
+        }
+        
+        // Fallback to bind_device if protect function is not available or failed
+        if let Err(e) = socket2_socket.bind_device(Some(dev_name.as_bytes())) {
+            tracing::error!("Failed to bind device {} on Android: {}. This usually requires CAP_NET_RAW permission.", dev_name, e);
+            return Err(e.into());
+        }
+        tracing::debug!("Successfully bound device {} on Android", dev_name);
+    }
+
     #[cfg(any(
-        target_os = "android",
         target_os = "fuchsia",
         target_os = "linux",
         target_env = "ohos"

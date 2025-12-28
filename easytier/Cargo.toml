@@ -276,6 +276,9 @@ jemalloc-sys = { package = "tikv-jemalloc-sys", version = "0.6.0", features = [
     "background_threads",
 ], optional = true }
 
+[target.'cfg(target_os = "android")'.dependencies]
+jni = { version = "0.21", optional = true }
+
 [target.'cfg(target_os = "macos")'.dependencies]
 jemalloc-sys = { package = "tikv-jemalloc-sys", version = "0.6.0", features = [
 ], optional = true }
@@ -343,3 +346,4 @@ socks5 = ["dep:smoltcp"]
 jemalloc = ["dep:jemallocator", "dep:jemalloc-sys"]
 jemalloc-prof = ["jemalloc", "dep:jemalloc-ctl", "jemalloc-ctl/stats", "jemalloc-sys/profiling", "jemalloc-sys/stats"]
 tracing = ["tokio/tracing", "dep:console-subscriber"]
+android-jni = ["dep:jni"]
