@@ -92,35 +92,43 @@ pub fn protect_fd(fd: i32) -> bool {
         }
     };
 
-    // 使用 ClassLoader.loadClass() 加载类
-    let class_name = match env.new_string("com.plugin.vpnservice.TauriVpnService") {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("protect_fd: new_string failed: {e}");
-            return false;
-        }
-    };
-
-    let class = match env
-        .call_method(
-            class_loader,
-            "loadClass",
-            "(Ljava/lang/String;)Ljava/lang/Class;",
-            &[JValue::from(&class_name)],
-        )
-        .and_then(|v| v.l())
-    {
+    // 直接使用 find_class 查找类（在当前 ClassLoader 上下文中）
+    // 由于我们已经通过 Context 获取了 ClassLoader，现在直接查找
+    let class_obj = match env.find_class("com/plugin/vpnservice/TauriVpnService") {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("protect_fd: loadClass failed: {e}");
-            return false;
+            eprintln!("protect_fd: find_class failed: {e}");
+            // 尝试通过 ClassLoader.loadClass 加载
+            let class_name = match env.new_string("com.plugin.vpnservice.TauriVpnService") {
+                Ok(s) => s,
+                Err(e2) => {
+                    eprintln!("protect_fd: new_string failed: {e2}");
+                    return false;
+                }
+            };
+            
+            let class = match env
+                .call_method(
+                    class_loader,
+                    "loadClass",
+                    "(Ljava/lang/String;)Ljava/lang/Class;",
+                    &[JValue::from(&class_name)],
+                )
+                .and_then(|v| v.l())
+            {
+                Ok(c) => c,
+                Err(e2) => {
+                    eprintln!("protect_fd: loadClass also failed: {e2}");
+                    return false;
+                }
+            };
+            class.into()
         }
     };
 
-    // loadClass 返回的是 Class 对象，可以直接强制转换为 JClass
-    let class_obj: JClass = class.into();
-
-    // 调用静态方法
+    // 调用静态方法前先检查方法是否存在
+    eprintln!("protect_fd: attempting to call protectFd on class: {:?}", class_obj);
+    
     let result = env
         .call_static_method(class_obj, "protectFd", "(I)Z", &[JValue::from(fd)])
         .and_then(|v| v.z());
