@@ -56,7 +56,6 @@ impl<R: Runtime> Vpnservice<R> {
 #[cfg(target_os = "android")]
 pub fn protect_fd(fd: i32) -> bool {
     use jni::objects::JValue;
-    use jni::JNIEnv;
 
     let ctx = ndk_context::android_context();
     let vm_ptr = ctx.vm();
@@ -71,8 +70,9 @@ pub fn protect_fd(fd: i32) -> bool {
         }
     };
 
-    let env: JNIEnv<'_> = match vm.attach_current_thread() {
-        Ok(env) => env,
+    // attach_current_thread 返回 AttachGuard，它会自动解引用为 JNIEnv
+    let mut env = match vm.attach_current_thread() {
+        Ok(guard) => guard,
         Err(e) => {
             eprintln!("protect_fd: attach_current_thread failed: {e}");
             return false;
