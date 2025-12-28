@@ -30,6 +30,9 @@ pub mod stun_codec_ext;
 pub mod token_bucket;
 pub mod tracing_rolling_appender;
 
+#[cfg(target_os = "android")]
+pub mod socket_protect;
+
 pub fn get_logger_timer<F: time::formatting::Formattable>(
     format: F,
 ) -> tracing_subscriber::fmt::time::OffsetTime<F> {

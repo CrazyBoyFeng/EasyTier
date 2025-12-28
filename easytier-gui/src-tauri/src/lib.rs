@@ -31,6 +31,26 @@ use tauri::{AppHandle, Emitter, Manager as _};
 #[cfg(not(target_os = "android"))]
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
+#[cfg(target_os = "android")]
+mod android_socket_protect {
+    use std::os::fd::RawFd;
+
+    use easytier::common::socket_protect::{self, SocketProtector};
+
+    struct AndroidVpnProtector;
+
+    impl SocketProtector for AndroidVpnProtector {
+        fn protect(&self, fd: RawFd) -> bool {
+            tauri_plugin_vpnservice::mobile::protect_fd(fd as i32)
+        }
+    }
+
+    pub fn init() {
+        socket_protect::set_socket_protector(Box::new(AndroidVpnProtector));
+    }
+}
+
+
 static INSTANCE_MANAGER: once_cell::sync::Lazy<RwLock<Option<Arc<NetworkInstanceManager>>>> =
     once_cell::sync::Lazy::new(|| RwLock::new(None));
 
@@ -372,6 +392,11 @@ async fn init_rpc_connection(_app: AppHandle, url: Option<String>) -> Result<(),
     .with_context(|| "Failed to connect remote rpc")
     .map_err(|e| format!("{:#}", e))?;
     *client_manager_guard = Some(client_manager);
+
+    #[cfg(target_os = "android")]
+    {
+        android_socket_protect::init();
+    }
 
     if !normal_mode {
         drop(WEB_CLIENT.write().await.take());
@@ -756,6 +781,12 @@ mod manager {
             let instance_id = cfg.get_id();
             app.emit("pre_run_network_instance", instance_id)
                 .map_err(|e| e.to_string())?;
+
+            #[cfg(target_os = "android")]
+            {
+                let flags = cfg.get_flags();
+                easytier::common::socket_protect::set_enabled(flags.bind_device);
+            }
 
             #[cfg(target_os = "android")]
             if !cfg.get_flags().no_tun {

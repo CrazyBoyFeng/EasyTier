@@ -7,7 +7,7 @@ use tauri::{
 use tauri::Manager;
 
 #[cfg(mobile)]
-mod mobile;
+pub mod mobile;
 
 #[cfg(mobile)]
 use mobile::Vpnservice;

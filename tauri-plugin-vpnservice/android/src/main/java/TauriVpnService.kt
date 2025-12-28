@@ -20,6 +20,16 @@ class TauriVpnService : VpnService() {
         const val DNS = "DNS"
         const val DISALLOWED_APPLICATIONS = "DISALLOWED_APPLICATIONS"
         const val MTU = "MTU"
+
+        @JvmStatic
+        fun protectFd(fd: Int): Boolean {
+            val service = self
+            return if (service != null) {
+                service.protect(fd)
+            } else {
+                false
+            }
+        }
     }
 
     private lateinit var vpnInterface: ParcelFileDescriptor

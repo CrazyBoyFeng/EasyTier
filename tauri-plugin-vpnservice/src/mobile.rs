@@ -52,3 +52,50 @@ impl<R: Runtime> Vpnservice<R> {
             .map_err(Into::into)
     }
 }
+
+#[cfg(target_os = "android")]
+pub fn protect_fd(fd: i32) -> bool {
+    use jni::objects::JValue;
+    use jni::JNIEnv;
+
+    let ctx = ndk_context::android_context();
+    let vm_ptr = ctx.vm();
+
+    // 安全构造 JavaVM
+    let vm = unsafe { jni::JavaVM::from_raw(vm_ptr.cast()) };
+    let vm = match vm {
+        Ok(vm) => vm,
+        Err(e) => {
+            eprintln!("protect_fd: JavaVM::from_raw failed: {e}");
+            return false;
+        }
+    };
+
+    let env: JNIEnv<'_> = match vm.attach_current_thread() {
+        Ok(env) => env,
+        Err(e) => {
+            eprintln!("protect_fd: attach_current_thread failed: {e}");
+            return false;
+        }
+    };
+
+    let class = match env.find_class("com/plugin/vpnservice/TauriVpnService") {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("protect_fd: find_class failed: {e}");
+            return false;
+        }
+    };
+
+    let result = env
+        .call_static_method(class, "protectFd", "(I)Z", &[JValue::from(fd)])
+        .and_then(|v| v.z());
+
+    match result {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("protect_fd: call_static_method failed: {e}");
+            false
+        }
+    }
+}

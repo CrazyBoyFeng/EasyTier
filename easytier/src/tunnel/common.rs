@@ -394,7 +394,6 @@ pub(crate) fn setup_sokcet2_ext(
     }
 
     #[cfg(any(
-        target_os = "android",
         target_os = "fuchsia",
         target_os = "linux",
         target_env = "ohos"
@@ -402,6 +401,15 @@ pub(crate) fn setup_sokcet2_ext(
     if let Some(dev_name) = bind_dev {
         tracing::trace!(dev_name = ?dev_name, "bind device");
         socket2_socket.bind_device(Some(dev_name.as_bytes()))?;
+    }
+
+    // Android: 只有在需要 bind_device 的场景下（即 bind_dev.is_some()），
+    // 才调用 VpnService.protect() 来替代 bind_device 行为
+    #[cfg(target_os = "android")]
+    if bind_dev.is_some() {
+        use std::os::fd::AsRawFd;
+        let fd = socket2_socket.as_raw_fd();
+        crate::common::socket_protect::protect_fd(fd)?;
     }
 
     Ok(())
