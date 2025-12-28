@@ -55,7 +55,7 @@ impl<R: Runtime> Vpnservice<R> {
 
 #[cfg(target_os = "android")]
 pub fn protect_fd(fd: i32) -> bool {
-    use jni::objects::JValue;
+    use jni::objects::{JObject, JValue};
 
     let ctx = ndk_context::android_context();
     let vm_ptr = ctx.vm();
@@ -79,14 +79,45 @@ pub fn protect_fd(fd: i32) -> bool {
         }
     };
 
-    let class = match env.find_class("com/plugin/vpnservice/TauriVpnService") {
-        Ok(c) => c,
+    // 获取 Activity Context 的 ClassLoader
+    let ctx_obj = unsafe { JObject::from_raw(ctx.context().cast()) };
+    let class_loader = match env
+        .call_method(ctx_obj, "getClassLoader", "()Ljava/lang/ClassLoader;", &[])
+        .and_then(|v| v.l())
+    {
+        Ok(loader) => loader,
         Err(e) => {
-            eprintln!("protect_fd: find_class failed: {e}");
+            eprintln!("protect_fd: getClassLoader failed: {e}");
             return false;
         }
     };
 
+    // 使用 ClassLoader.loadClass() 加载类
+    let class_name = match env.new_string("com.plugin.vpnservice.TauriVpnService") {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("protect_fd: new_string failed: {e}");
+            return false;
+        }
+    };
+
+    let class = match env
+        .call_method(
+            class_loader,
+            "loadClass",
+            "(Ljava/lang/String;)Ljava/lang/Class;",
+            &[JValue::from(&class_name)],
+        )
+        .and_then(|v| v.l())
+    {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("protect_fd: loadClass failed: {e}");
+            return false;
+        }
+    };
+
+    // 调用静态方法
     let result = env
         .call_static_method(class, "protectFd", "(I)Z", &[JValue::from(fd)])
         .and_then(|v| v.z());
