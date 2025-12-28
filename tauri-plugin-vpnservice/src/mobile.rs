@@ -55,7 +55,7 @@ impl<R: Runtime> Vpnservice<R> {
 
 #[cfg(target_os = "android")]
 pub fn protect_fd(fd: i32) -> bool {
-    use jni::objects::{JObject, JValue};
+    use jni::objects::{JClass, JObject, JValue};
 
     let ctx = ndk_context::android_context();
     let vm_ptr = ctx.vm();
@@ -117,9 +117,12 @@ pub fn protect_fd(fd: i32) -> bool {
         }
     };
 
+    // loadClass 返回的是 Class 对象，可以直接强制转换为 JClass
+    let class_obj: JClass = class.into();
+
     // 调用静态方法
     let result = env
-        .call_static_method(class, "protectFd", "(I)Z", &[JValue::from(fd)])
+        .call_static_method(class_obj, "protectFd", "(I)Z", &[JValue::from(fd)])
         .and_then(|v| v.z());
 
     match result {
