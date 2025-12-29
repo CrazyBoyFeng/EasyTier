@@ -37,24 +37,6 @@ use jni::{JNIEnv, objects::{JClass, JObject}, sys::{jint, jobject, JavaVM}};
 #[cfg(all(target_os = "android", feature = "android-jni"))]
 static mut JVM: Option<JavaVM> = None;
 
-/// Global flag for Android bind_device mode
-/// This is needed because setup_sokcet2_ext doesn't have access to global_ctx
-#[cfg(target_os = "android")]
-static BIND_DEVICE_ENABLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
-/// Set the bind_device flag for Android
-#[cfg(target_os = "android")]
-pub fn set_bind_device_enabled(enabled: bool) {
-    BIND_DEVICE_ENABLED.store(enabled, std::sync::atomic::Ordering::Relaxed);
-    tracing::info!("Android bind_device flag set to: {}", enabled);
-}
-
-/// Get the bind_device flag for Android
-#[cfg(target_os = "android")]
-pub fn is_bind_device_enabled() -> bool {
-    BIND_DEVICE_ENABLED.load(std::sync::atomic::Ordering::Relaxed)
-}
-
 /// Initialize JNI for Android socket protection
 #[cfg(all(target_os = "android", feature = "android-jni"))]
 pub fn init_android_jni(vm: JavaVM) {
@@ -449,7 +431,6 @@ pub(crate) fn setup_sokcet2_ext(
     socket2_socket: &socket2::Socket,
     bind_addr: &SocketAddr,
     #[allow(unused_variables)] bind_dev: Option<String>,
-    #[allow(unused_variables)] bind_device_enabled: bool = false,
 ) -> Result<(), TunnelError> {
     #[cfg(target_os = "windows")]
     {
@@ -497,27 +478,27 @@ pub(crate) fn setup_sokcet2_ext(
 
     #[cfg(target_os = "android")]
     {
-        // Android: Use VPNService.protect() when bind_device is enabled
-        // This is device-independent and doesn't require a specific device name
-        // Unlike Linux, Android doesn't need bind_dev to trigger protection
-        // We check the global BIND_DEVICE_ENABLED flag instead of bind_dev
-        let bind_device_enabled = is_bind_device_enabled();
-        tracing::info!("Android socket setup: bind_addr={}, bind_device_enabled={}", bind_addr, bind_device_enabled);
+        // Android: Unlike Linux, Android doesn't support bind_device
+        // We use VPNService.protect() to exclude sockets from VPN routing
+        if let Some(dev_name) = bind_dev {
+            tracing::warn!(
+                dev_name = ?dev_name,
+                "bind_device is not supported on Android, attempting to protect socket instead"
+            );
 
-        if bind_device_enabled {
-            tracing::trace!("Protecting socket on Android (bind to physical device mode)");
-
-            // Use VPNService.protect() instead of bind_device
-            // This is device-independent and doesn't require CAP_NET_RAW permission
             let fd = AsRawFd::as_raw_fd(socket2_socket);
             match protect_socket_android(fd) {
                 Ok(()) => {
-                    tracing::debug!("Successfully protected socket {} on Android (VPN mode), addr: {}", fd, bind_addr);
-                    // Don't return early - continue with the rest of setup
+                    tracing::debug!(
+                        "Successfully protected socket {} on Android (excluded from VPN), addr: {}",
+                        fd, bind_addr
+                    );
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to protect socket {} on Android: {}. Socket will not be protected from VPN.", fd, e);
-                    // Continue without protection - this is a warning, not a fatal error
+                    tracing::warn!(
+                        "Failed to protect socket {} on Android: {}. Socket will be routed through VPN.",
+                        fd, e
+                    );
                 }
             }
         }
@@ -565,7 +546,6 @@ pub(crate) fn setup_sokcet2(
         socket2_socket,
         bind_addr,
         super::common::get_interface_name_by_ip(&bind_addr.ip()),
-        false,  // bind_device_enabled: default to false
     )
 }
 
