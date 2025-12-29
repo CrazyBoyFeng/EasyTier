@@ -58,7 +58,6 @@ async function doStartVpn(ipv4Addr: string, cidr: number, routes: string[], dns?
     ipv4Addr: `${ipv4Addr}/${cidr}`,
     routes,
     dns,
-    disallowedApplications: ['com.kkrainbow.easytier'],
     mtu: 1300,
   })
   if (start_ret?.errorMsg?.length) {
