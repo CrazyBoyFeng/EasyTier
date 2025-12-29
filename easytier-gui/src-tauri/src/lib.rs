@@ -758,6 +758,12 @@ mod manager {
                 .map_err(|e| e.to_string())?;
 
             #[cfg(target_os = "android")]
+            {
+                // Set bind_device flag for Android socket protection
+                easytier::tunnel::common::set_bind_device_enabled(cfg.get_flags().bind_device);
+            }
+
+            #[cfg(target_os = "android")]
             if !cfg.get_flags().no_tun {
                 self.disable_instances_with_tun(app)
                     .await
