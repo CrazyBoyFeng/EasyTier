@@ -139,7 +139,6 @@ class TauriVpnService : VpnService() {
      * Get the current service instance for socket protection
      * This function is called from JNI
      */
-    companion object {
         @JvmStatic
         fun getInstance(): TauriVpnService? {
             return instance
