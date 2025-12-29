@@ -1,11 +1,13 @@
 use std::{
     any::Any,
     net::{IpAddr, SocketAddr},
-    os::fd::AsRawFd,
     pin::Pin,
     sync::{Arc, Mutex},
     task::{ready, Poll},
 };
+
+#[cfg(target_os = "android")]
+use std::os::fd::AsRawFd;
 
 
 
@@ -477,9 +479,9 @@ pub(crate) fn setup_sokcet2_ext(
     #[cfg(target_os = "android")]
     if let Some(dev_name) = bind_dev {
         tracing::trace!(dev_name = ?dev_name, "bind device");
-        
+
         // Try to use protect socket function first (preferred for Android)
-        let fd = socket2_socket.as_raw_fd();
+        let fd = AsRawFd::as_raw_fd(socket2_socket);
         match protect_socket_android(fd) {
             Ok(()) => {
                 tracing::debug!("Successfully protected socket {} instead of binding device {}", fd, dev_name);
@@ -489,7 +491,7 @@ pub(crate) fn setup_sokcet2_ext(
                 tracing::warn!("Failed to protect socket {}: {}, falling back to bind_device", fd, e);
             }
         }
-        
+
         // Fallback to bind_device if protect function is not available or failed
         if let Err(e) = socket2_socket.bind_device(Some(dev_name.as_bytes())) {
             tracing::error!("Failed to bind device {} on Android: {}. This usually requires CAP_NET_RAW permission.", dev_name, e);
