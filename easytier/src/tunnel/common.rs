@@ -477,27 +477,22 @@ pub(crate) fn setup_sokcet2_ext(
     }
 
     #[cfg(target_os = "android")]
-    if let Some(dev_name) = bind_dev {
-        tracing::trace!(dev_name = ?dev_name, "bind device");
+    if bind_dev.is_some() {
+        tracing::trace!("Protecting socket on Android (bind to physical device mode)");
 
-        // Try to use protect socket function first (preferred for Android)
+        // Use VPNService.protect() instead of bind_device
+        // This is device-independent and doesn't require CAP_NET_RAW permission
         let fd = AsRawFd::as_raw_fd(socket2_socket);
         match protect_socket_android(fd) {
             Ok(()) => {
-                tracing::debug!("Successfully protected socket {} instead of binding device {}", fd, dev_name);
+                tracing::debug!("Successfully protected socket {} on Android (VPN mode)", fd);
                 return Ok(());
             }
             Err(e) => {
-                tracing::warn!("Failed to protect socket {}: {}, falling back to bind_device", fd, e);
+                tracing::warn!("Failed to protect socket {} on Android: {}. Socket will not be protected from VPN.", fd, e);
+                // Continue without protection - this is a warning, not a fatal error
             }
         }
-
-        // Fallback to bind_device if protect function is not available or failed
-        if let Err(e) = socket2_socket.bind_device(Some(dev_name.as_bytes())) {
-            tracing::error!("Failed to bind device {} on Android: {}. This usually requires CAP_NET_RAW permission.", dev_name, e);
-            return Err(e.into());
-        }
-        tracing::debug!("Successfully bound device {} on Android", dev_name);
     }
 
     #[cfg(any(
