@@ -449,7 +449,7 @@ pub(crate) fn setup_sokcet2_ext(
     socket2_socket: &socket2::Socket,
     bind_addr: &SocketAddr,
     #[allow(unused_variables)] bind_dev: Option<String>,
-    #[allow(unused_variables)] bind_device_enabled: bool,
+    #[allow(unused_variables)] bind_device_enabled: bool = false,
 ) -> Result<(), TunnelError> {
     #[cfg(target_os = "windows")]
     {
