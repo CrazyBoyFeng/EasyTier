@@ -7,8 +7,7 @@ use std::{
     task::{ready, Poll},
 };
 
-#[cfg(target_os = "android")]
-use std::sync::OnceLock;
+
 
 use futures::{stream::FuturesUnordered, Future, Sink, Stream};
 use network_interface::NetworkInterfaceConfig as _;
@@ -98,7 +97,7 @@ pub fn protect_socket_android(fd: i32) -> Result<(), String> {
 
 /// Fallback function for when JNI is not available
 #[cfg(not(all(target_os = "android", feature = "android-jni")))]
-pub fn protect_socket_android(fd: i32) -> Result<(), String> {
+pub fn protect_socket_android(_fd: i32) -> Result<(), String> {
     Err("Android socket protection not available (JNI feature not enabled)".to_string())
 }
 
