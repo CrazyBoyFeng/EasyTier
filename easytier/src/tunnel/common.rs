@@ -46,6 +46,19 @@ pub fn init_android_jni(vm: JavaVM) {
     tracing::info!("Android JVM initialized for socket protection");
 }
 
+/// JNI_OnLoad is automatically called when the native library is loaded by JVM
+/// We use this to initialize the JavaVM for socket protection
+#[cfg(all(target_os = "android", feature = "android-jni"))]
+#[no_mangle]
+pub extern "C" fn JNI_OnLoad(
+    vm: JavaVM,
+    _reserved: *mut std::ffi::c_void,
+) -> jni::sys::jint {
+    tracing::info!("JNI_OnLoad called, initializing JVM for socket protection");
+    init_android_jni(vm);
+    jni::JNI_VERSION_1_6
+}
+
 /// Protect a socket using Android VPNService
 #[cfg(all(target_os = "android", feature = "android-jni"))]
 pub fn protect_socket_android(fd: i32) -> Result<(), String> {
