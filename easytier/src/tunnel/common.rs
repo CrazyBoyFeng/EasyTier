@@ -34,7 +34,7 @@ use super::{
 #[cfg(all(target_os = "android", feature = "android-jni"))]
 use jni::{JNIEnv, JavaVM, objects::JValue};
 #[cfg(all(target_os = "android", feature = "android-jni"))]
-use jni::sys::{jint, JNI_VERSION_1_6, JNI_OK};
+use jni::sys::{jint, JNI_VERSION_1_6};
 
 /// 全局 JavaVM 引用，用于跨线程 JNI 调用。
 /// 使用 static mut 是为了零开销访问，JVM 保证初始化线程安全。
@@ -72,18 +72,12 @@ pub fn protect_socket_android(fd: i32) -> Result<(), String> {
         // 通过不可变引用访问 JVM，安全地获取 JavaVM 实例
         // 注意：这里不会修改 JVM，只是读取其引用
         if let Some(ref jvm) = JVM {
-            let mut env: *mut jni::sys::JNIEnv = std::ptr::null_mut();
-            if jvm.get_env(&mut env as *mut _ as *mut _) != JNI_OK {
-                if jvm.attach_current_thread_as_daemon(&mut env as *mut _ as *mut _, std::ptr::null()) != JNI_OK {
-                    return Err("Failed to attach current thread to JVM".to_string());
-                }
-            }
-
-            if env.is_null() {
-                return Err("Failed to get JNI environment".to_string());
-            }
-
-            let jni_env = JNIEnv::from_raw(env).map_err(|e| format!("Failed to create JNIEnv: {:?}", e))?;
+            // 尝试获取当前线程的 JNIEnv，如果未附加则附加为守护线程
+            let jni_env = match jvm.get_env() {
+                Ok(env) => env,
+                Err(_) => jvm.attach_current_thread_as_daemon()
+                    .map_err(|e| format!("Failed to attach thread to JVM: {:?}", e))?,
+            };
 
             // Get TauriVpnService class
             let service_class = jni_env.find_class("com/plugin/vpnservice/TauriVpnService")
@@ -96,12 +90,15 @@ pub fn protect_socket_android(fd: i32) -> Result<(), String> {
                 "(I)I"
             ).map_err(|e| format!("Failed to get protectSocketStatic method: {:?}", e))?;
 
-            // Call the method
-            let result = jni_env.call_static_int_method(
+            // Call the method and extract jint result
+            let result: jint = jni_env.call_static_method(
                 service_class,
                 protect_method,
-                fd
-            ).map_err(|e| format!("Failed to call protectSocketStatic: {:?}", e))?;
+                &[JValue::Int(fd)]
+            )
+                .map_err(|e| format!("Failed to call protectSocketStatic: {:?}", e))?
+                .i()
+                .map_err(|e| format!("Failed to extract jint result: {:?}", e))?;
 
             match result {
                 0 => {
