@@ -32,7 +32,7 @@ use super::{
 };
 
 #[cfg(all(target_os = "android", feature = "android-jni"))]
-use jni::{JNIEnv, JavaVM, objects::JValue};
+use jni::{JavaVM, objects::JValue};
 #[cfg(all(target_os = "android", feature = "android-jni"))]
 use jni::sys::{jint, JNI_VERSION_1_6};
 
@@ -83,17 +83,13 @@ pub fn protect_socket_android(fd: i32) -> Result<(), String> {
             let service_class = jni_env.find_class("com/plugin/vpnservice/TauriVpnService")
                 .map_err(|e| format!("Failed to find TauriVpnService class: {:?}", e))?;
 
-            // Get static protectSocket method
-            let protect_method = jni_env.get_static_method_id(
-                service_class,
-                "protectSocketStatic",
-                "(I)I"
-            ).map_err(|e| format!("Failed to get protectSocketStatic method: {:?}", e))?;
 
-            // Call the method and extract jint result
+
+            // Call static method directly with method name and signature
             let result: jint = jni_env.call_static_method(
                 service_class,
-                protect_method,
+                "protectSocketStatic",
+                "(I)I",
                 &[JValue::Int(fd)]
             )
                 .map_err(|e| format!("Failed to call protectSocketStatic: {:?}", e))?
