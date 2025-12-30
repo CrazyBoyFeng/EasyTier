@@ -73,7 +73,7 @@ pub fn protect_socket_android(fd: i32) -> Result<(), String> {
         // 注意：这里不会修改 JVM，只是读取其引用
         if let Some(ref jvm) = JVM {
             // 尝试获取当前线程的 JNIEnv，如果未附加则附加为守护线程
-            let jni_env = match jvm.get_env() {
+            let mut jni_env = match jvm.get_env() {
                 Ok(env) => env,
                 Err(_) => jvm.attach_current_thread_as_daemon()
                     .map_err(|e| format!("Failed to attach thread to JVM: {:?}", e))?,
