@@ -19,6 +19,44 @@ struct InterfaceFilter {
 #[cfg(any(target_os = "android", target_env = "ohos"))]
 impl InterfaceFilter {
     async fn filter_iface(&self) -> bool {
+        // Android: Filter out virtual interfaces to support "bind to physical device only"
+        // Virtual interfaces have names starting with: tun, tap, wg, easytier, or contain "virtual"
+
+        let iface_name = self.iface.name.to_lowercase();
+        let is_virtual = iface_name.starts_with("tun")
+            || iface_name.starts_with("tap")
+            || iface_name.starts_with("wg")
+            || iface_name.starts_with("easytier")
+            || iface_name.contains("virtual");
+
+        if is_virtual {
+            tracing::trace!("Skipping virtual Android interface: {}", self.iface.name);
+            return false;
+        }
+
+        // Check if interface is loopback or point-to-point
+        if self.iface.is_loopback() || self.iface.is_point_to_point() {
+            return false;
+        }
+
+        // Check if interface is up
+        if !self.iface.is_up() {
+            return false;
+        }
+
+        // Check if interface has valid IP addresses
+        let has_valid_ip = self
+            .iface
+            .ips
+            .iter()
+            .map(|ip| ip.ip())
+            .any(|ip| !ip.is_loopback() && !ip.is_unspecified() && !ip.is_multicast());
+
+        if !has_valid_ip {
+            return false;
+        }
+
+        tracing::trace!("Accepting Android physical interface: {}", self.iface.name);
         true
     }
 }

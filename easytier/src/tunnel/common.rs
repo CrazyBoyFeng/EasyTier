@@ -6,6 +6,11 @@ use std::{
     task::{ready, Poll},
 };
 
+#[cfg(target_os = "android")]
+use std::os::fd::AsRawFd;
+
+
+
 use futures::{stream::FuturesUnordered, Future, Sink, Stream};
 use network_interface::NetworkInterfaceConfig as _;
 use pin_project_lite::pin_project;
@@ -25,6 +30,96 @@ use super::{
     packet_def::{TCPTunnelHeader, ZCPacketType, TCP_TUNNEL_HEADER_SIZE},
     SinkItem, StreamItem, Tunnel, TunnelError, ZCPacketSink, ZCPacketStream,
 };
+
+#[cfg(all(target_os = "android", feature = "android-jni"))]
+use jni::{JavaVM, objects::JValue};
+#[cfg(all(target_os = "android", feature = "android-jni"))]
+use jni::sys::{jint, JNI_VERSION_1_6};
+
+/// 全局 JavaVM 引用，用于跨线程 JNI 调用。
+/// 使用 static mut 是为了零开销访问，JVM 保证初始化线程安全。
+#[cfg(all(target_os = "android", feature = "android-jni"))]
+static mut JVM: Option<JavaVM> = None;
+
+/// 初始化全局 JavaVM，在 JNI_OnLoad 中调用一次。
+/// unsafe 用于写入 static mut，但 JVM 保证线程安全。
+#[cfg(all(target_os = "android", feature = "android-jni"))]
+pub fn init_android_jni(vm: JavaVM) {
+    unsafe {
+        JVM = Some(vm);
+    }
+    tracing::info!("Android JVM initialized for socket protection");
+}
+
+/// JNI_OnLoad is automatically called when the native library is loaded by JVM
+/// We use this to initialize the JavaVM for socket protection
+#[cfg(all(target_os = "android", feature = "android-jni"))]
+#[no_mangle]
+pub extern "C" fn JNI_OnLoad(
+    vm: JavaVM,
+    _reserved: *mut std::ffi::c_void,
+) -> jint {
+    tracing::info!("JNI_OnLoad called, initializing JVM for socket protection");
+    init_android_jni(vm);
+    JNI_VERSION_1_6
+}
+
+/// 使用 Android VPNService 保护 socket。
+/// unsafe 用于访问全局 JVM，但 JavaVM 线程安全，且通过安全 API 调用 Java 方法。
+#[cfg(all(target_os = "android", feature = "android-jni"))]
+pub fn protect_socket_android(fd: i32) -> Result<(), String> {
+    unsafe {
+        // 通过不可变引用访问 JVM，安全地获取 JavaVM 实例
+        // 注意：这里不会修改 JVM，只是读取其引用
+        if let Some(ref jvm) = JVM {
+            // 尝试获取当前线程的 JNIEnv，如果未附加则附加为守护线程
+            let mut jni_env = match jvm.get_env() {
+                Ok(env) => env,
+                Err(_) => jvm.attach_current_thread_as_daemon()
+                    .map_err(|e| format!("Failed to attach thread to JVM: {:?}", e))?,
+            };
+
+            // Get TauriVpnService class
+            let service_class = jni_env.find_class("com/plugin/vpnservice/TauriVpnService")
+                .map_err(|e| format!("Failed to find TauriVpnService class: {:?}", e))?;
+
+
+
+            // Call static method directly with method name and signature
+            let result: jint = jni_env.call_static_method(
+                service_class,
+                "protectSocketStatic",
+                "(I)I",
+                &[JValue::Int(fd)]
+            )
+                .map_err(|e| format!("Failed to call protectSocketStatic: {:?}", e))?
+                .i()
+                .map_err(|e| format!("Failed to extract jint result: {:?}", e))?;
+
+            match result {
+                0 => {
+                    tracing::debug!("Successfully protected socket fd: {}", fd);
+                    Ok(())
+                }
+                code => Err(format!("Failed to protect socket fd: {}, error code: {}", fd, code)),
+            }
+        } else {
+            Err("JVM not initialized".to_string())
+        }
+    }
+}
+
+/// Fallback function for when JNI is not available
+#[cfg(not(all(target_os = "android", feature = "android-jni")))]
+pub fn protect_socket_android(_fd: i32) -> Result<(), String> {
+    Err("Android socket protection not available (JNI feature not enabled)".to_string())
+}
+
+/// Initialize socket protection system
+#[cfg(target_os = "android")]
+pub fn init_socket_protection() {
+    tracing::info!("Socket protection initialization called (JNI mode)");
+}
 
 pub struct TunnelWrapper<R, W> {
     reader: Arc<Mutex<Option<R>>>,
@@ -393,8 +488,35 @@ pub(crate) fn setup_sokcet2_ext(
         }
     }
 
+    #[cfg(target_os = "android")]
+    {
+        // Android: Unlike Linux, Android doesn't support bind_device
+        // We use VPNService.protect() to exclude sockets from VPN routing
+        if let Some(dev_name) = bind_dev {
+            tracing::warn!(
+                dev_name = ?dev_name,
+                "bind_device is not supported on Android, attempting to protect socket instead"
+            );
+
+            let fd = AsRawFd::as_raw_fd(socket2_socket);
+            match protect_socket_android(fd) {
+                Ok(()) => {
+                    tracing::debug!(
+                        "Successfully protected socket {} on Android (excluded from VPN), addr: {}",
+                        fd, bind_addr
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to protect socket {} on Android: {}. Socket will be routed through VPN.",
+                        fd, e
+                    );
+                }
+            }
+        }
+    }
+
     #[cfg(any(
-        target_os = "android",
         target_os = "fuchsia",
         target_os = "linux",
         target_env = "ohos"
