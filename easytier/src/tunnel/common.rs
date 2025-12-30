@@ -32,12 +32,17 @@ use super::{
 };
 
 #[cfg(all(target_os = "android", feature = "android-jni"))]
-use jni::{JNIEnv, objects::{JClass, JObject}, sys::{jint, jobject, JavaVM}};
+use jni::{JNIEnv, JavaVM, objects::JValue};
+#[cfg(all(target_os = "android", feature = "android-jni"))]
+use jni::sys::{jint, JNI_VERSION_1_6, JNI_OK};
 
+/// 全局 JavaVM 引用，用于跨线程 JNI 调用。
+/// 使用 static mut 是为了零开销访问，JVM 保证初始化线程安全。
 #[cfg(all(target_os = "android", feature = "android-jni"))]
 static mut JVM: Option<JavaVM> = None;
 
-/// Initialize JNI for Android socket protection
+/// 初始化全局 JavaVM，在 JNI_OnLoad 中调用一次。
+/// unsafe 用于写入 static mut，但 JVM 保证线程安全。
 #[cfg(all(target_os = "android", feature = "android-jni"))]
 pub fn init_android_jni(vm: JavaVM) {
     unsafe {
@@ -53,51 +58,52 @@ pub fn init_android_jni(vm: JavaVM) {
 pub extern "C" fn JNI_OnLoad(
     vm: JavaVM,
     _reserved: *mut std::ffi::c_void,
-) -> jni::sys::jint {
+) -> jint {
     tracing::info!("JNI_OnLoad called, initializing JVM for socket protection");
     init_android_jni(vm);
-    jni::JNI_VERSION_1_6
+    JNI_VERSION_1_6
 }
 
-/// Protect a socket using Android VPNService
+/// 使用 Android VPNService 保护 socket。
+/// unsafe 用于访问全局 JVM，但 JavaVM 线程安全，且通过安全 API 调用 Java 方法。
 #[cfg(all(target_os = "android", feature = "android-jni"))]
 pub fn protect_socket_android(fd: i32) -> Result<(), String> {
     unsafe {
+        // 通过不可变引用访问 JVM，安全地获取 JavaVM 实例
+        // 注意：这里不会修改 JVM，只是读取其引用
         if let Some(ref jvm) = JVM {
-            // Attach current thread to JVM
-            let mut env = std::ptr::null_mut();
-            if jvm.GetEnv(&mut env as *mut _ as *mut _, jni::JNI_VERSION_1_6) != jni::JNI_OK {
-                if jvm.AttachCurrentThread(&mut env as *mut _ as *mut _, std::ptr::null_mut()) != jni::JNI_OK {
+            let mut env: *mut jni::sys::JNIEnv = std::ptr::null_mut();
+            if jvm.get_env(&mut env as *mut _ as *mut _) != JNI_OK {
+                if jvm.attach_current_thread_as_daemon(&mut env as *mut _ as *mut _, std::ptr::null()) != JNI_OK {
                     return Err("Failed to attach current thread to JVM".to_string());
                 }
             }
-            
+
             if env.is_null() {
                 return Err("Failed to get JNI environment".to_string());
             }
-            
+
             let jni_env = JNIEnv::from_raw(env).map_err(|e| format!("Failed to create JNIEnv: {:?}", e))?;
-            
+
             // Get TauriVpnService class
             let service_class = jni_env.find_class("com/plugin/vpnservice/TauriVpnService")
                 .map_err(|e| format!("Failed to find TauriVpnService class: {:?}", e))?;
-            
+
             // Get static protectSocket method
             let protect_method = jni_env.get_static_method_id(
                 service_class,
-                "protectSocketStatic", 
+                "protectSocketStatic",
                 "(I)I"
             ).map_err(|e| format!("Failed to get protectSocketStatic method: {:?}", e))?;
-            
+
             // Call the method
-            let result = jni_env.call_static_method_unchecked(
+            let result = jni_env.call_static_int_method(
                 service_class,
                 protect_method,
-                jni::sys::jint::JNI_TYPE,
-                &[jni::objects::JValue::Int(fd).as_jni()],
+                fd
             ).map_err(|e| format!("Failed to call protectSocketStatic: {:?}", e))?;
-            
-            match result.i() {
+
+            match result {
                 0 => {
                     tracing::debug!("Successfully protected socket fd: {}", fd);
                     Ok(())
