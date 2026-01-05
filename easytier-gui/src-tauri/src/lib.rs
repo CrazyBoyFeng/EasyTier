@@ -274,7 +274,7 @@ fn init_service() -> Result<(), String> {
             .unwrap();
         let res = env.call_static_method(class, "protectSocket", "(I)Z", &[fd.into()]);
         match res {
-            Ok(jni::objects::JValue::Bool(b)) => b,
+            Ok(jni::objects::JValueGen::Bool(b)) => b != 0,
             _ => false,
         }
     }));
