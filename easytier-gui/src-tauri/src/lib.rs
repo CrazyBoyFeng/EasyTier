@@ -265,6 +265,19 @@ async fn get_network_metas(
 #[cfg(target_os = "android")]
 #[tauri::command]
 fn init_service() -> Result<(), String> {
+    easytier::arch::android::set_socket_protect_callback(Box::new(|fd| {
+        let ctx = ndk_context::android_context();
+        let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }.unwrap();
+        let mut env = vm.attach_current_thread().unwrap();
+        let class = env
+            .find_class("com/plugin/vpnservice/TauriVpnService")
+            .unwrap();
+        let res = env.call_static_method(class, "protectSocket", "(I)Z", &[fd.into()]);
+        match res {
+            Ok(jni::objects::JValue::Bool(b)) => b,
+            _ => false,
+        }
+    }));
     Ok(())
 }
 

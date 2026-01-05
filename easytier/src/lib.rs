@@ -5,7 +5,7 @@ use std::io;
 use clap::Command;
 use clap_complete::Generator;
 
-mod arch;
+pub mod arch;
 mod gateway;
 pub mod instance;
 mod peer_center;
