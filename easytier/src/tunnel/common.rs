@@ -404,6 +404,15 @@ pub(crate) fn setup_sokcet2_ext(
         socket2_socket.bind_device(Some(dev_name.as_bytes()))?;
     }
 
+    #[cfg(target_os = "android")]
+    {
+        use std::os::fd::AsRawFd;
+        let fd = socket2_socket.as_raw_fd();
+        if !crate::arch::android::protect_socket(fd) {
+            tracing::warn!("failed to protect socket {}", fd);
+        }
+    }
+
     Ok(())
 }
 
