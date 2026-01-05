@@ -31,10 +31,9 @@ async fn set_bind_addr_for_peer_connector(
     is_ipv4: bool,
     ip_collector: &Arc<IPCollector>,
 ) {
-    if cfg!(any(target_os = "android", target_env = "ohos")) {
-        return;
-    }
-
+    // Android: Collect IP addresses to filter out virtual interfaces
+    // The IP collection uses InterfaceFilter which filters out tun/tap devices
+    // This ensures only physical interface IPs are used
     let ips = ip_collector.collect_ip_addrs().await;
     if is_ipv4 {
         let mut bind_addrs = vec![];

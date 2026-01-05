@@ -1039,6 +1039,15 @@ pub fn run_gui() -> std::process::ExitCode {
 
     let app = builder
         .setup(|app| {
+            // Initialize Android socket protection
+            #[cfg(target_os = "android")]
+            {
+                use easytier::tunnel::common::init_socket_protection;
+                init_socket_protection();
+                println!("Android socket protection initialized (JNI mode)");
+            }
+
+
             // for logging config
             let Ok(log_dir) = get_log_dir(app.app_handle()) else {
                 return Ok(());
